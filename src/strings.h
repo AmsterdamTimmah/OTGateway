@@ -206,3 +206,7 @@ const char S_USE_DHCP[]                             PROGMEM = "useDhcp";
 const char S_USER[]                                 PROGMEM = "user";
 const char S_VALUE[]                                PROGMEM = "value";
 const char S_VERSION[]                              PROGMEM = "version";
+const char S_OEM_DIAGNOSTIC_CODE[]                    PROGMEM = "oemDiagnosticCode";
+const char S_TUNNEL_MODE[]                          PROGMEM = "tunnelMode";
+const char S_TUNNEL_IN_GPIO[]                       PROGMEM = "tunnelInGpio";
+const char S_TUNNEL_OUT_GPIO[]                      PROGMEM = "tunnelOutGpio";

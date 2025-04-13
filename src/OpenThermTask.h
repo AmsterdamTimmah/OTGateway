@@ -7,6 +7,7 @@ public:
 
   ~OpenThermTask() {
     delete this->instance;
+    delete this->tunnelInstance;
   }
 
 protected:
@@ -18,10 +19,14 @@ protected:
   const unsigned int initializingInterval = 3600000u;
 
   CustomOpenTherm* instance = nullptr;
+  CustomOpenTherm* tunnelInstance = nullptr;
   unsigned long instanceCreatedTime = 0;
   byte instanceInGpio = 0;
   byte instanceOutGpio = 0;
+  byte tunnelInstanceInGpio = 0;
+  byte tunnelInstanceOutGpio = 0;
   bool initialized = false;
+  bool tunnelModeActive = false;
   unsigned long connectedTime = 0;
   unsigned long disconnectedTime = 0;
   unsigned long resetBusTime = 0;
@@ -56,66 +61,172 @@ protected:
       vars.slave.dhw.maxTemp = convertTemp(vars.slave.dhw.maxTemp, UnitSystem::METRIC, settings.system.unitSystem);
     }
 
-    // delete instance
+    // Delete instances
     if (this->instance != nullptr) {
       delete this->instance;
       this->instance = nullptr;
       Log.sinfoln(FPSTR(L_OT), F("Stopped"));
     }
 
-    if (!GPIO_IS_VALID(settings.opentherm.inGpio) || !GPIO_IS_VALID(settings.opentherm.outGpio)) {
-      Log.swarningln(
-        FPSTR(L_OT),
-        F("Not started. GPIO IN: %hhu or GPIO OUT: %hhu is not valid"),
-        settings.opentherm.inGpio,
-        settings.opentherm.outGpio
-      );
-      return;
+    if (this->tunnelInstance != nullptr) {
+      delete this->tunnelInstance;
+      this->tunnelInstance = nullptr;
+      Log.sinfoln(FPSTR(L_OT), F("Tunnel instance stopped"));
     }
 
-    #ifdef OT_BYPASS_RELAY_GPIO
-    pinMode(OT_BYPASS_RELAY_GPIO, OUTPUT);
-    digitalWrite(OT_BYPASS_RELAY_GPIO, true);
-    #endif
+    this->tunnelModeActive = settings.opentherm.options.tunnelMode;
 
-    // create instance
-    this->instance = new CustomOpenTherm(settings.opentherm.inGpio, settings.opentherm.outGpio);
+    // Check if operating in tunnel mode or normal mode
+    if (this->tunnelModeActive) {
+      if (!GPIO_IS_VALID(settings.opentherm.inGpio) || !GPIO_IS_VALID(settings.opentherm.outGpio) ||
+          !GPIO_IS_VALID(settings.opentherm.tunnelInGpio) || !GPIO_IS_VALID(settings.opentherm.tunnelOutGpio)) {
+        Log.swarningln(
+          FPSTR(L_OT),
+          F("Tunnel mode not started. GPIO IN: %hhu, OUT: %hhu, TUNNEL IN: %hhu, TUNNEL OUT: %hhu not all valid"),
+          settings.opentherm.inGpio,
+          settings.opentherm.outGpio,
+          settings.opentherm.tunnelInGpio,
+          settings.opentherm.tunnelOutGpio
+        );
+        this->tunnelModeActive = false;
+        return;
+      }
 
-    // flags
-    this->instanceCreatedTime = millis();
-    this->instanceInGpio = settings.opentherm.inGpio;
-    this->instanceOutGpio = settings.opentherm.outGpio;
-    this->resetBusTime = millis();
-    this->initialized = false;
+      #ifdef OT_BYPASS_RELAY_GPIO
+      pinMode(OT_BYPASS_RELAY_GPIO, OUTPUT);
+      digitalWrite(OT_BYPASS_RELAY_GPIO, true);
+      #endif
 
-    Log.sinfoln(FPSTR(L_OT), F("Started. GPIO IN: %hhu, GPIO OUT: %hhu"), settings.opentherm.inGpio, settings.opentherm.outGpio);
+      // Create instances for tunnel mode
+      this->instance = new CustomOpenTherm(settings.opentherm.inGpio, settings.opentherm.outGpio);
+      this->tunnelInstance = new CustomOpenTherm(settings.opentherm.tunnelInGpio, settings.opentherm.tunnelOutGpio, true);
 
-    this->instance->setAfterSendRequestCallback([this](unsigned long request, unsigned long response, OpenThermResponseStatus status, byte attempt) {
-      Log.sverboseln(
+      // Set flags
+      this->instanceCreatedTime = millis();
+      this->instanceInGpio = settings.opentherm.inGpio;
+      this->instanceOutGpio = settings.opentherm.outGpio;
+      this->tunnelInstanceInGpio = settings.opentherm.tunnelInGpio;
+      this->tunnelInstanceOutGpio = settings.opentherm.tunnelOutGpio;
+      this->resetBusTime = millis();
+      this->initialized = false;
+
+      Log.sinfoln(
         FPSTR(L_OT),
-        F("ID: %4d   Request: %8lx   Response: %8lx   Msg type: %s   Attempt: %2d   Status: %s"),
-        CustomOpenTherm::getDataID(request),
-        request,
-        response,
-        CustomOpenTherm::getResponseMessageTypeString(response),
-        attempt,
-        CustomOpenTherm::statusToString(status)
+        F("Started in TUNNEL mode. Boiler: IN=%hhu OUT=%hhu, Thermostat: IN=%hhu OUT=%hhu"),
+        settings.opentherm.inGpio,
+        settings.opentherm.outGpio,
+        settings.opentherm.tunnelInGpio,
+        settings.opentherm.tunnelOutGpio
       );
 
-      if (status == OpenThermResponseStatus::SUCCESS) {
-        this->lastSuccessResponse = millis();
+      // Setup callbacks
+      this->instance->setAfterSendRequestCallback([this](unsigned long request, unsigned long response, OpenThermResponseStatus status, byte attempt) {
+        Log.sverboseln(
+          FPSTR(L_OT),
+          F("TUNNEL BOILER: ID: %4d   Request: %8lx   Response: %8lx   Msg type: %s   Attempt: %2d   Status: %s"),
+          CustomOpenTherm::getDataID(request),
+          request,
+          response,
+          CustomOpenTherm::getResponseMessageTypeString(response),
+          attempt,
+          CustomOpenTherm::statusToString(status)
+        );
 
-        if (this->configuredRxLedGpio != GPIO_IS_NOT_CONFIGURED) {
-          digitalWrite(this->configuredRxLedGpio, HIGH);
-          delayMicroseconds(2000);
-          digitalWrite(this->configuredRxLedGpio, LOW);
+        if (status == OpenThermResponseStatus::SUCCESS) {
+          this->lastSuccessResponse = millis();
+
+          if (this->configuredRxLedGpio != GPIO_IS_NOT_CONFIGURED) {
+            digitalWrite(this->configuredRxLedGpio, HIGH);
+            delayMicroseconds(2000);
+            digitalWrite(this->configuredRxLedGpio, LOW);
+          }
         }
-      }
-    });
+      });
 
-    this->instance->setDelayCallback([this](unsigned int time) {
-      this->delay(time);
-    });
+      this->tunnelInstance->setAfterSendRequestCallback([this](unsigned long request, unsigned long response, OpenThermResponseStatus status, byte attempt) {
+        Log.sverboseln(
+          FPSTR(L_OT),
+          F("TUNNEL THERMOSTAT: ID: %4d   Request: %8lx   Response: %8lx   Msg type: %s   Attempt: %2d   Status: %s"),
+          CustomOpenTherm::getDataID(request),
+          request,
+          response,
+          CustomOpenTherm::getResponseMessageTypeString(response),
+          attempt,
+          CustomOpenTherm::statusToString(status)
+        );
+      });
+
+      this->instance->setDelayCallback([this](unsigned int time) {
+        this->delay(time);
+      });
+
+      this->tunnelInstance->setDelayCallback([this](unsigned int time) {
+        this->delay(time);
+      });
+      
+      // Set the process request callback for tunnel instance
+      this->tunnelInstance->begin([this](unsigned long request, OpenThermResponseStatus status) {
+        this->tunnelProcessRequest(request, status);
+      });
+    } else {
+      // Normal mode (non-tunnel mode)
+      if (!GPIO_IS_VALID(settings.opentherm.inGpio) || !GPIO_IS_VALID(settings.opentherm.outGpio)) {
+        Log.swarningln(
+          FPSTR(L_OT),
+          F("Not started. GPIO IN: %hhu or GPIO OUT: %hhu is not valid"),
+          settings.opentherm.inGpio,
+          settings.opentherm.outGpio
+        );
+        return;
+      }
+
+      #ifdef OT_BYPASS_RELAY_GPIO
+      pinMode(OT_BYPASS_RELAY_GPIO, OUTPUT);
+      digitalWrite(OT_BYPASS_RELAY_GPIO, true);
+      #endif
+
+      // Create normal instance
+      this->instance = new CustomOpenTherm(settings.opentherm.inGpio, settings.opentherm.outGpio);
+
+      // Set flags
+      this->instanceCreatedTime = millis();
+      this->instanceInGpio = settings.opentherm.inGpio;
+      this->instanceOutGpio = settings.opentherm.outGpio;
+      this->resetBusTime = millis();
+      this->initialized = false;
+
+      Log.sinfoln(FPSTR(L_OT), F("Started in NORMAL mode. GPIO IN: %hhu, GPIO OUT: %hhu"), settings.opentherm.inGpio, settings.opentherm.outGpio);
+
+      this->instance->setAfterSendRequestCallback([this](unsigned long request, unsigned long response, OpenThermResponseStatus status, byte attempt) {
+        Log.sverboseln(
+          FPSTR(L_OT),
+          F("ID: %4d   Request: %8lx   Response: %8lx   Msg type: %s   Attempt: %2d   Status: %s"),
+          CustomOpenTherm::getDataID(request),
+          request,
+          response,
+          CustomOpenTherm::getResponseMessageTypeString(response),
+          attempt,
+          CustomOpenTherm::statusToString(status)
+        );
+
+        if (status == OpenThermResponseStatus::SUCCESS) {
+          this->lastSuccessResponse = millis();
+
+          if (this->configuredRxLedGpio != GPIO_IS_NOT_CONFIGURED) {
+            digitalWrite(this->configuredRxLedGpio, HIGH);
+            delayMicroseconds(2000);
+            digitalWrite(this->configuredRxLedGpio, LOW);
+          }
+        }
+      });
+
+      this->instance->setDelayCallback([this](unsigned int time) {
+        this->delay(time);
+      });
+      
+      // Normal mode instance setup
+      this->instance->begin();
+    }
   }
 
   void loop() {
@@ -123,10 +234,59 @@ protected:
       return;
     }
 
-    if (this->instanceInGpio != settings.opentherm.inGpio || this->instanceOutGpio != settings.opentherm.outGpio) {
+    // Check if tunnel mode setting has changed
+    if (this->tunnelModeActive != settings.opentherm.options.tunnelMode ||
+        this->instanceInGpio != settings.opentherm.inGpio || 
+        this->instanceOutGpio != settings.opentherm.outGpio ||
+        (this->tunnelModeActive && (
+          this->tunnelInstanceInGpio != settings.opentherm.tunnelInGpio || 
+          this->tunnelInstanceOutGpio != settings.opentherm.tunnelOutGpio))) {
       this->setup();
+      return;
+    }
 
-    } else if (vars.master.memberId != settings.opentherm.memberId || vars.master.flags != settings.opentherm.flags) {
+    // In tunnel mode, we only need to process the tunnelInstance and check connection status
+    if (this->tunnelModeActive) {
+      if (this->instance == nullptr || this->tunnelInstance == nullptr) {
+        this->delay(5000);
+        return;
+      }
+
+      // Process any incoming messages from the external thermostat
+      this->tunnelInstance->process();
+
+      // Check connection status
+      // 5 request retries
+      // 1000ms maximum response waiting time
+      // 100ms delay between requests
+      // +15%
+      // 5 * (1000 + 100) * 1.15 = 6325 ms
+      if (!vars.slave.connected && millis() - this->lastSuccessResponse < 6325) {
+        Log.sinfoln(
+          FPSTR(L_OT),
+          F("Connected in TUNNEL mode, downtime: %lu s."),
+          (millis() - this->disconnectedTime) / 1000
+        );
+        
+        this->connectedTime = millis();
+        vars.slave.connected = true;
+        
+      } else if (vars.slave.connected && millis() - this->lastSuccessResponse > 6325) {
+        Log.swarningln(
+          FPSTR(L_OT),
+          F("Disconnected in TUNNEL mode, uptime: %lu s."),
+          (millis() - this->connectedTime) / 1000  
+        );
+
+        this->disconnectedTime = millis();
+        vars.slave.connected = false;
+      }
+      
+      return;
+    }
+
+    // Normal mode operation below
+    if (vars.master.memberId != settings.opentherm.memberId || vars.master.flags != settings.opentherm.flags) {
       this->initialized = false;
       vars.master.memberId = settings.opentherm.memberId;
       vars.master.flags = settings.opentherm.flags;
@@ -2021,5 +2181,36 @@ protected:
     vars.slave.fanSpeed.supply = CustomOpenTherm::getUInt(response);
 
     return true;
+  }
+
+  void tunnelProcessRequest(unsigned long request, OpenThermResponseStatus status) {
+    if (!this->tunnelModeActive) return;
+
+    // Forward request from thermostat to boiler and send response back
+    unsigned long response = this->instance->sendRequest(request);
+    
+    if (response) {
+      this->tunnelInstance->sendResponse(response);
+      
+      // Extract and update status values for monitoring
+      if (CustomOpenTherm::getDataID(request) == OpenThermMessageID::Status) {
+        OpenThermMessageType msgType = (OpenThermMessageType)CustomOpenTherm::getMessageType(response);
+        if (msgType == OpenThermMessageType::READ_ACK) {
+          vars.slave.heating.active = CustomOpenTherm::isCentralHeatingActive(response);
+          vars.slave.dhw.active = settings.opentherm.options.dhwSupport ? CustomOpenTherm::isHotWaterActive(response) : false;
+          vars.slave.flame = CustomOpenTherm::isFlameOn(response);
+          vars.slave.cooling = CustomOpenTherm::isCoolingActive(response);
+          vars.slave.fault.active = CustomOpenTherm::isFault(response);
+          vars.slave.diag.active = CustomOpenTherm::isDiagnostic(response);
+          
+          Log.snoticeln(
+            FPSTR(L_OT), 
+            F("Tunnel forwarded status. Heating: %hhu; DHW: %hhu; flame: %hhu; cooling: %hhu; fault: %hhu; diag: %hhu"),
+            vars.slave.heating.active, vars.slave.dhw.active,
+            vars.slave.flame, vars.slave.cooling, vars.slave.fault.active, vars.slave.diag.active
+          );
+        }
+      }
+    }
   }
 };

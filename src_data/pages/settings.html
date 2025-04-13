@@ -447,6 +447,29 @@
                 </label>
               </div>
 
+              <fieldset>
+                <legend data-i18n>settings.ot.tunnel.title</legend>
+                
+                <label>
+                  <input type="checkbox" name="opentherm[options][tunnelMode]" value="true">
+                  <span data-i18n>settings.ot.tunnel.enable</span>
+                </label>
+
+                <div class="grid">
+                  <label>
+                    <span data-i18n>settings.ot.tunnel.inGpio</span>
+                    <input type="number" inputmode="numeric" name="opentherm[tunnelInGpio]" min="0" max="254" step="1">
+                    <small data-i18n>settings.ot.tunnel.inNote</small>
+                  </label>
+
+                  <label>
+                    <span data-i18n>settings.ot.tunnel.outGpio</span>
+                    <input type="number" inputmode="numeric" name="opentherm[tunnelOutGpio]" min="0" max="254" step="1">
+                    <small data-i18n>settings.ot.tunnel.outNote</small>
+                  </label>
+                </div>
+              </fieldset>
+
               <div class="grid">
                 <label>
                   <span data-i18n>settings.ot.memberId</span>

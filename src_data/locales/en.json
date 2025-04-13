@@ -87,6 +87,13 @@
         "turbo": "Turbo mode"
       },
 
+      "tunnel": {
+        "enableMode": "Enable Tunnel Mode",
+        "disableMode": "Disable Tunnel Mode",
+        "active": "Tunnel Mode Active",
+        "inactive": "Master Mode Active"
+      },
+
       "notify": {
         "fault": {
           "title": "Boiler Fault state is active!",
@@ -397,13 +404,23 @@
           "dhwBlocking": "DHW blocking",
           "modulationSyncWithHeating": "Sync modulation with heating",
           "maxTempSyncWithTargetTemp": "Sync max heating temp with target temp",
-          "getMinMaxTemp": "Get min/max temp from boiler",
-          "immergasFix": "Fix for Immergas boilers"
+          "getMinMaxTemp": "Read min/max temp from boiler",
+          "immergasFix": "Boiler compatibility: Immergas fix",
+          "tunnelMode": "Enable tunnel mode"
+        },
+
+        "tunnel": {
+          "title": "Tunnel Mode Settings",
+          "enable": "Enable tunnel mode",
+          "inGpio": "Tunnel In GPIO (from external thermostat)",
+          "outGpio": "Tunnel Out GPIO (to external thermostat)",
+          "inNote": "Connect to the external thermostat",
+          "outNote": "Connect to the external thermostat"
         },
 
         "nativeHeating": {
-          "title": "Native heating control (boiler)",
-          "note": "Works <u>ONLY</u> if the boiler requires the desired room temperature and regulates the temperature of the coolant itself. Not compatible with PID and Equitherm regulators in firmware."
+          "title": "Native heating control",
+          "note": "With this mode, the boiler's built-in heating control with indoor temperature setting is used. The system controls the target indoor temperature, not the heat carrier setpoint."
         }
       },
 

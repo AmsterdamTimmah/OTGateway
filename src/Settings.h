@@ -57,6 +57,8 @@ struct Settings {
     byte inGpio = DEFAULT_OT_IN_GPIO;
     byte outGpio = DEFAULT_OT_OUT_GPIO;
     byte rxLedGpio = DEFAULT_OT_RX_LED_GPIO;
+    byte tunnelInGpio = DEFAULT_OT_TUNNEL_IN_GPIO;
+    byte tunnelOutGpio = DEFAULT_OT_TUNNEL_OUT_GPIO;
     uint8_t memberId = 0;
     uint8_t flags = 0;
     uint8_t maxModulation = 100;
@@ -77,6 +79,7 @@ struct Settings {
       bool getMinMaxTemp = true;
       bool nativeHeatingControl = false;
       bool immergasFix = false;
+      bool tunnelMode = false;
     } options;
   } opentherm;
 

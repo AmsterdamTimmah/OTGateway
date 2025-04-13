@@ -81,6 +81,10 @@
               </div>
             </div>
 
+            <div class="tunnel-mode-control" style="margin-top: 20px;">
+              <button id="tunnelModeToggle" class="outline secondary"></button>
+            </div>
+
             <div class="notify notify-error notify-fault hidden">
               <div class="notify-icon">
                 <i class="icons-error"></i>
@@ -441,6 +445,38 @@
           }, 10000);
         });
 
+        // Tunnel mode toggle button
+        document.querySelector('#tunnelModeToggle').addEventListener('click', async (event) => {
+          const tunnelButton = document.querySelector("#tunnelModeToggle");
+          if (!tunnelButton.disabled) {
+            tunnelButton.disabled = true;
+            
+            // Toggle tunnel mode
+            const newTunnelMode = !prevSettings.opentherm.options.tunnelMode;
+            
+            let response = await fetch("/api/settings", {
+              method: "POST",
+              cache: "no-cache",
+              credentials: "include",
+              headers: {
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify({
+                "opentherm": {
+                  "options": {
+                    "tunnelMode": newTunnelMode
+                  }
+                }
+              })
+            });
+            
+            // Force refresh to apply changes
+            setTimeout(() => {
+              window.location.reload();
+            }, 1000);
+          }
+        });
+
         setTimeout(async function onLoadPage() {
           let unitSystem = null;
 
@@ -505,10 +541,45 @@
             setCheckboxValue('#tDhwEnabled', result.dhw.enabled);
             setValue('.tDhw .targetTemp', result.dhw.target);
 
+            // Set unit values
             setValue('.tempUnit', temperatureUnit(unitSystem));
             setValue('.pressureUnit', pressureUnit(unitSystem));
             setValue('.volumeUnit', volumeUnit(unitSystem));
             setValue('.sAbsModMax', result.opentherm.maxModulation);
+
+            // Update tunnel mode button text and appearance
+            const tunnelButton = document.querySelector('#tunnelModeToggle');
+            if (tunnelButton) {
+              if (result.opentherm.options.tunnelMode) {
+                tunnelButton.textContent = i18n('dashboard.tunnel.disableMode');
+                tunnelButton.classList.add('secondary');
+                tunnelButton.classList.remove('primary');
+              } else {
+                tunnelButton.textContent = i18n('dashboard.tunnel.enableMode');
+                tunnelButton.classList.add('primary');
+                tunnelButton.classList.remove('secondary');
+              }
+            }
+
+            const tunnelModeStatusText = document.createElement('div');
+            tunnelModeStatusText.style.textAlign = 'center';
+            tunnelModeStatusText.style.marginTop = '5px';
+            tunnelModeStatusText.textContent = result.opentherm.options.tunnelMode ? 
+              i18n('dashboard.tunnel.active') : 
+              i18n('dashboard.tunnel.inactive');
+            
+            const tunnelModeControl = document.querySelector('.tunnel-mode-control');
+            if (tunnelModeControl) {
+              // Remove any existing status text
+              const existingStatus = tunnelModeControl.querySelector('div');
+              if (existingStatus) {
+                existingStatus.remove();
+              }
+              tunnelModeControl.appendChild(tunnelModeStatusText);
+            }
+
+            document.querySelector('#dashboard-busy').classList.toggle("hidden", true);
+            document.querySelector('#dashboard-container').classList.toggle("hidden", false);
 
           } catch (error) {
             console.log(error);
@@ -650,8 +721,6 @@
             const tDhw = document.querySelector('.tDhw');
             tDhw.dataset.min = result.master.dhw.minTemp;
             tDhw.dataset.max = result.master.dhw.maxTemp;
-
-            setBusy('#dashboard-busy', '#dashboard-container', false);
 
           } catch (error) {
             console.log(error);
